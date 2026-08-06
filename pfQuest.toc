@@ -1,6 +1,7 @@
 ## Interface: 11200
 ## Title: |cff33ffccpf|cffffffffQuest
-## Author: Shagu, txtsd
+## Author: Shagu, txtsd - fork by Roby_Brok
+## X-Website: https://github.com/roby-brok/pfQuest
 ## Notes: A Questhelper and Database
 ## Notes-ruRU: Облегченный помощник заданий и база данных
 ## Version: 8.0.0
