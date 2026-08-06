@@ -33,7 +33,7 @@
 > patchtable, so with more than one installed the winner is whichever folder sorts last —
 > `pfQuest-turtle` silently overrides `pfQuest-octo`, and you get the wrong server's site when
 > you click through to a quest. There is now a **Quest Database Website** box in the settings that
-> overrides all of them. Leave it empty to keep the old behaviour and defer to the pack.
+> overrides all of them, and defaults to OctoWoW's database. Clear the box to defer to the pack.
 >
 > ### Installing this fork
 >
@@ -57,13 +57,17 @@
 > custom content need an extra pack on top, downloaded separately — **this repository does not
 > include one**:
 >
-> | Server | Pack | Rename the unpacked folder to |
+> | For | Pack | Rename the unpacked folder to |
 > |---|---|---|
 > | [OctoWoW](https://octowow.st) | [pfQuest-octo](https://github.com/paokkerkir/pfQuest-octo) | `pfQuest-octo` |
-> | [Turtle WoW](https://turtle-wow.org) | [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) | `pfQuest-turtle` |
+> | Extra quest data | [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) | `pfQuest-turtle` |
 >
 > Same trap as above — the zips unpack as `pfQuest-octo-main` and `pfQuest-turtle-main`, and
 > neither loads until renamed.
+>
+> The turtle pack carries considerably more quest data and is still the fuller database, but
+> Turtle WoW itself has shut down, so the website it links to is gone. That is what the
+> **Quest Database Website** setting above is for — it defaults to OctoWoW's.
 >
 > **Install only one of them.** Both write the same database namespace as a plain assignment
 > rather than a merge, so whichever loads last replaces the other outright. With both present the
