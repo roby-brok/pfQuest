@@ -55,10 +55,15 @@ local reset = {
 
 -- default config
 pfQuest_defconfig = {
-  { -- 1: All Quests; 2: Tracked; 3: Manual; 4: Hide
+  { -- 1: All Quests; 2: Tracked; 3: Manual; 4: Hide; 5: Current Zone
+    -- Defaults to 5 in this fork. Upstream ships 1, which puts every active
+    -- quest in the tracker at once; 5 shows only what is relevant to the zone
+    -- you are standing in. Change it from the dropdown at the top right of the
+    -- world map. This only affects fresh installs -- the seeding below never
+    -- overwrites a value that is already saved.
     config = "trackingmethod",
     text = nil,
-    default = 1,
+    default = 5,
     type = nil,
   },
   {

@@ -13,6 +13,13 @@
 > sizes, so the larger cluster icons keep their proportion to the regular ones. A value that is
 > missing, non-numeric, zero or negative falls back to `1.0`.
 >
+> **The quest tracker defaults to Current Zone.** Upstream defaults to *All Quests*, which puts
+> every active quest in the tracker at once. This fork defaults to *Current Zone*, which shows
+> only the quests relevant to where you are standing, plus anything you have explicitly watched.
+> The mode itself is upstream's, only the default changed. Switch it any time from the dropdown
+> at the top right of the world map. Existing installs are untouched — the config seeding never
+> overwrites a value you already have saved.
+>
 > **Fix: the map could stop following the quest log.** pfQuest locks its scan loop for ten
 > seconds at login so the burst of events on load can settle. Every `QUEST_LOG_UPDATE` arriving
 > while that lock was active pushed it out another 1.5 seconds, and nothing ever cleared it — so
