@@ -622,16 +622,28 @@ function pfQuest:AddQuestLogIntegration()
   dockTitle:SetHeight(dockTitle:GetHeight() + 30)
   dockTitle:SetJustifyV("BOTTOM")
 
+  -- Resolve the quest database website at click time rather than trusting
+  -- pfQuest.dburl directly. Every database pack assigns that variable in its
+  -- own patchtable, so with more than one installed the winner is simply
+  -- whichever folder sorts last -- pfQuest-turtle overwrites pfQuest-octo, for
+  -- instance, and you silently get the wrong server's site. An explicit setting
+  -- wins over all of them; empty defers to the pack, which is the old behaviour.
+  function pfQuest:GetDatabaseURL()
+    local custom = pfQuest_config and pfQuest_config["dburl"]
+    if custom and custom ~= "" then return custom end
+    return pfQuest.dburl or ""
+  end
+
   pfQuest.buttonOnline = pfQuest.buttonOnline or CreateFrame("Button", "pfQuestOnline", dockFrame)
   pfQuest.buttonOnline:SetWidth(18)
   pfQuest.buttonOnline:SetHeight(15)
   pfQuest.buttonOnline:SetPoint("TOPRIGHT", dockFrame, "TOPRIGHT", -12, -10)
   pfQuest.buttonOnline:SetScript("OnClick", function()
     if pfUI and pfUI.chat then
-      pfUI.chat.urlcopy.text:SetText(pfQuest.dburl .. (this:GetID() or 0))
+      pfUI.chat.urlcopy.text:SetText(pfQuest:GetDatabaseURL() .. (this:GetID() or 0))
       pfUI.chat.urlcopy:Show()
     else
-      StaticPopupDialogs["PFQUEST_URLCOPY"].data = pfQuest.dburl .. (this:GetID() or 0)
+      StaticPopupDialogs["PFQUEST_URLCOPY"].data = pfQuest:GetDatabaseURL() .. (this:GetID() or 0)
       local dialog = StaticPopup_Show("PFQUEST_URLCOPY")
       _G[dialog:GetName() .. "Button1"]:ClearAllPoints()
       _G[dialog:GetName() .. "Button1"]:SetPoint("BOTTOM", dialog, "BOTTOM", 0, 16)

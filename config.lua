@@ -82,6 +82,8 @@ pfQuest_defconfig = {
   { text = L["Show Database IDs"], default = "0", type = "checkbox", config = "showids" },
   { text = L["Draw Favorites On Login"], default = "0", type = "checkbox", config = "favonlogin" },
   { text = L["Minimum Item Drop Chance"], default = "1", type = "text", config = "mindropchance" },
+  -- Leave empty to use whatever the loaded database pack sets. See pfQuest:GetDatabaseURL().
+  { text = L["Quest Database Website"], default = "", type = "text", config = "dburl" },
   { text = L["Show Tooltips"], default = "1", type = "checkbox", config = "showtooltips" },
   { text = L["Show Help On Tooltips"], default = "1", type = "checkbox", config = "tooltiphelp" },
   { text = L["Show Level On Quest Tracker"], default = "1", type = "checkbox", config = "trackerlevel" },

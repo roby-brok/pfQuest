@@ -29,6 +29,12 @@
 > with `/db query`. The lock now has a hard ceiling and always releases.
 > ([reported by ReikerEQ](https://github.com/roby-brok/pfQuest/issues/1))
 >
+> **Quest database website is settable.** Each database pack assigns `pfQuest.dburl` in its own
+> patchtable, so with more than one installed the winner is whichever folder sorts last —
+> `pfQuest-turtle` silently overrides `pfQuest-octo`, and you get the wrong server's site when
+> you click through to a quest. There is now a **Quest Database Website** box in the settings that
+> overrides all of them. Leave it empty to keep the old behaviour and defer to the pack.
+>
 > ### Installing this fork
 >
 > **The download links further down this page point at the upstream repository, not at this
