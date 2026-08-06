@@ -160,6 +160,10 @@ pfQuest.route.Reset = function(self)
   self.lastDrawX = nil
   self.lastDrawY = nil
   self.lastDrawNode = nil
+  self.tick = nil
+  self.throttle = nil
+  self.recalculate = nil
+  self.refreshTrackerDistances = true
 end
 
 pfQuest.route.AddPoint = function(self, tbl)
@@ -203,7 +207,52 @@ pfQuest.route.IsTarget = function(node)
 end
 
 local lastpos, completed = 0, 0
+local function GetQuestSortMode()
+  return pfQuest_config["trackerquestsort"] == "distance" and "distance" or "level"
+end
+-- Match tracker.lua's fallback behavior so missing route distances sort last
+-- without relying on math.huge on older clients.
+local DIST_FAR = 99999999
+
 local function sortfunc(a, b)
+  if pfQuest_config["trackingmethod"] == 5 then
+    -- Route tuples are { x, y, node, distance, watched, questid }
+    -- Watched quests stay ahead of all local non-watched candidates in mode 5.
+    if (a[5] and 1 or -1) ~= (b[5] and 1 or -1) then
+      return (a[5] and 1 or -1) > (b[5] and 1 or -1)
+    end
+
+    local alevel = (a[3] and tonumber(a[3].qlvl)) or -1
+    local blevel = (b[3] and tonumber(b[3].qlvl)) or -1
+
+    if GetQuestSortMode() == "distance" then
+      -- "Nearest" mode still keeps watched quests first; after that, prefer the
+      -- closest current-map objective and only use quest level as a tie-breaker.
+      if (a[4] or DIST_FAR) ~= (b[4] or DIST_FAR) then
+        return (a[4] or DIST_FAR) < (b[4] or DIST_FAR)
+      end
+      if alevel ~= blevel then
+        return alevel > blevel
+      end
+    else
+      -- "Level" mode flips the middle priority: higher quest level wins first,
+      -- then distance breaks ties so the chosen target still feels local.
+      if alevel ~= blevel then
+        return alevel > blevel
+      end
+      if (a[4] or DIST_FAR) ~= (b[4] or DIST_FAR) then
+        return (a[4] or DIST_FAR) < (b[4] or DIST_FAR)
+      end
+    end
+
+    -- Final stable tie-breaker so equal watched/level/distance candidates do
+    -- not reshuffle unpredictably between updates.
+    local atitle = (a[3] and a[3].title) or ""
+    local btitle = (b[3] and b[3].title) or ""
+    if atitle ~= btitle then
+      return atitle < btitle
+    end
+  end
   return a[4] < b[4]
 end
 pfQuest.route:SetScript("OnUpdate", function()
@@ -267,6 +316,11 @@ pfQuest.route:SetScript("OnUpdate", function()
     end
 
     this.recalculate = GetTime() + 1
+
+    if this.refreshTrackerDistances and tracker and tracker.RefreshNearestDistances then
+      tracker:RefreshNearestDistances()
+      this.refreshTrackerDistances = nil
+    end
   end
 
   -- show arrow when route exists and is stable
@@ -286,6 +340,20 @@ pfQuest.route:SetScript("OnUpdate", function()
     ClearPath(objectivepath)
     ClearPath(playerpath)
     ClearPath(mplayerpath)
+    return
+  end
+
+  -- continent or two-continent view: hide all paths and skip route calculation.
+  -- wrongmap means GetPlayerMapPosition returned 0,0 so distances are meaningless;
+  -- without this guard the re-sort from bad distances flips firstnode and causes
+  -- the route to be redrawn on the continent map.
+  if wrongmap then
+    ClearPath(objectivepath)
+    ClearPath(playerpath)
+    ClearPath(mplayerpath)
+    this.lastDrawX = nil
+    this.lastDrawY = nil
+    this.firstnode = nil
     return
   end
 
@@ -329,37 +397,29 @@ pfQuest.route:SetScript("OnUpdate", function()
     completed = GetTime()
   end
 
-  if wrongmap then
-    -- hide player-to-object path
+  -- only redraw player-to-object path when position has changed enough to
+  -- produce a visible difference — DrawLine places one dot-texture per unit
+  -- of distance, so sub-threshold redraws are pure waste.
+  -- also invalidate when the target node changed (firstnode flip).
+  local px, py = xplayer * 100, yplayer * 100
+  local dx = (this.lastDrawX or px + 1) - px
+  local dy = (this.lastDrawY or py + 1) - py
+  local moved = dx * dx + dy * dy
+  local targetChanged = this.lastDrawNode ~= this.firstnode
+
+  if moved > 0.09 or targetChanged then -- threshold: 0.3 map units squared
+    this.lastDrawX = px
+    this.lastDrawY = py
+    this.lastDrawNode = this.firstnode
+
+    -- draw player-to-object path
     ClearPath(playerpath)
     ClearPath(mplayerpath)
-    this.lastDrawX = nil
-    this.lastDrawY = nil
-  else
-    -- only redraw player-to-object path when position has changed enough to
-    -- produce a visible difference — DrawLine places one dot-texture per unit
-    -- of distance, so sub-threshold redraws are pure waste.
-    -- also invalidate when the target node changed (firstnode flip).
-    local px, py = xplayer * 100, yplayer * 100
-    local dx = (this.lastDrawX or px + 1) - px
-    local dy = (this.lastDrawY or py + 1) - py
-    local moved = dx * dx + dy * dy
-    local targetChanged = this.lastDrawNode ~= this.firstnode
+    DrawLine(playerpath, px, py, this.coords[1][1], this.coords[1][2], true)
 
-    if moved > 0.09 or targetChanged then -- threshold: 0.3 map units squared
-      this.lastDrawX = px
-      this.lastDrawY = py
-      this.lastDrawNode = this.firstnode
-
-      -- draw player-to-object path
-      ClearPath(playerpath)
-      ClearPath(mplayerpath)
-      DrawLine(playerpath, px, py, this.coords[1][1], this.coords[1][2], true)
-
-      -- also draw minimap path if enabled
-      if pfQuest_config["routeminimap"] == "1" then
-        DrawLine(mplayerpath, px, py, this.coords[1][1], this.coords[1][2], true, true)
-      end
+    -- also draw minimap path if enabled
+    if pfQuest_config["routeminimap"] == "1" then
+      DrawLine(mplayerpath, px, py, this.coords[1][1], this.coords[1][2], true, true)
     end
   end
 end)
@@ -387,6 +447,19 @@ end)
 
 pfQuest.route.arrow:SetScript("OnDragStop", function()
   this:StopMovingOrSizing()
+  local anchor, x, y = pfUI.api.ConvertFrameAnchor(this, pfUI.api.GetBestAnchor(this))
+  this:ClearAllPoints()
+  this:SetPoint(anchor, x, y)
+
+  -- save position
+  pfQuest_config.arrowpos = { anchor, x, y }
+end)
+
+pfQuest.route.arrow:SetScript("OnShow", function()
+  if pfQuest_config.arrowpos then
+    this:ClearAllPoints()
+    this:SetPoint(unpack(pfQuest_config.arrowpos))
+  end
 end)
 
 local invalid, lasttarget
@@ -509,32 +582,106 @@ pfQuest.route.arrow:SetScript("OnUpdate", function()
   this.model:SetAlpha(alpha)
 end)
 
-pfQuest.route.arrow.texture = pfQuest.route.arrow:CreateTexture("pfQuestRouteNodeTexture", "OVERLAY")
-pfQuest.route.arrow.texture:SetWidth(28)
-pfQuest.route.arrow.texture:SetHeight(28)
-pfQuest.route.arrow.texture:SetPoint("BOTTOM", 0, 0)
+-- Keep the outer arrow frame as the stable drag/anchor box and scale a child container instead
+pfQuest.route.arrow.content = CreateFrame("Frame", nil, pfQuest.route.arrow)
+pfQuest.route.arrow.content:SetPoint("TOPLEFT", pfQuest.route.arrow, "TOPLEFT", -80, 0)
+pfQuest.route.arrow.content:SetPoint("BOTTOMRIGHT", pfQuest.route.arrow, "BOTTOMRIGHT", 80, -54)
 
-pfQuest.route.arrow.model = pfQuest.route.arrow:CreateTexture("pfQuestRouteArrow", "MEDIUM")
+pfQuest.route.arrow.model = pfQuest.route.arrow.content:CreateTexture("pfQuestRouteArrow", "MEDIUM")
 pfQuest.route.arrow.model:SetTexture(pfQuestConfig.path .. "\\img\\arrow")
 pfQuest.route.arrow.model:SetTexCoord(0, 0, 0.109375, 0.08203125)
-pfQuest.route.arrow.model:SetAllPoints()
+pfQuest.route.arrow.model:SetWidth(48)
+pfQuest.route.arrow.model:SetHeight(36)
+pfQuest.route.arrow.model:SetPoint("TOP", pfQuest.route.arrow.content, "TOP", 0, 0)
 
-pfQuest.route.arrow.title = pfQuest.route.arrow:CreateFontString("pfQuestRouteText", "HIGH", "GameFontWhite")
+pfQuest.route.arrow.texture = pfQuest.route.arrow.content:CreateTexture("pfQuestRouteNodeTexture", "OVERLAY")
+pfQuest.route.arrow.texture:SetWidth(28)
+pfQuest.route.arrow.texture:SetHeight(28)
+pfQuest.route.arrow.texture:SetPoint("BOTTOM", pfQuest.route.arrow.model, "BOTTOM", 0, 0)
+
+pfQuest.route.arrow.title = pfQuest.route.arrow.content:CreateFontString("pfQuestRouteText", "HIGH", "GameFontWhite")
 pfQuest.route.arrow.title:SetPoint("TOP", pfQuest.route.arrow.model, "BOTTOM", 0, -10)
 pfQuest.route.arrow.title:SetFont(pfUI.font_default, pfUI_config.global.font_size + 1, "OUTLINE")
 pfQuest.route.arrow.title:SetTextColor(1, 0.8, 0)
 pfQuest.route.arrow.title:SetJustifyH("CENTER")
 
-pfQuest.route.arrow.description = pfQuest.route.arrow:CreateFontString("pfQuestRouteText", "HIGH", "GameFontWhite")
+pfQuest.route.arrow.description = pfQuest.route.arrow.content:CreateFontString("pfQuestRouteText", "HIGH", "GameFontWhite")
 pfQuest.route.arrow.description:SetPoint("TOP", pfQuest.route.arrow.title, "BOTTOM", 0, -2)
 pfQuest.route.arrow.description:SetFont(pfUI.font_default, pfUI_config.global.font_size, "OUTLINE")
 pfQuest.route.arrow.description:SetTextColor(1, 1, 1)
 pfQuest.route.arrow.description:SetJustifyH("CENTER")
 
-pfQuest.route.arrow.distance = pfQuest.route.arrow:CreateFontString("pfQuestRouteDistance", "HIGH", "GameFontWhite")
+pfQuest.route.arrow.distance = pfQuest.route.arrow.content:CreateFontString("pfQuestRouteDistance", "HIGH", "GameFontWhite")
 pfQuest.route.arrow.distance:SetPoint("TOP", pfQuest.route.arrow.description, "BOTTOM", 0, -2)
 pfQuest.route.arrow.distance:SetFont(pfUI.font_default, pfUI_config.global.font_size - 1, "OUTLINE")
 pfQuest.route.arrow.distance:SetTextColor(0.8, 0.8, 0.8)
 pfQuest.route.arrow.distance:SetJustifyH("CENTER")
 
 pfQuest.route.arrow.parent = pfQuest.route
+
+-- arrow scale method: single source of truth for both scroll wheel and config slider
+function pfQuest.route.arrow:ApplyScale()
+  local scale = tonumber(pfQuest_config["arrowscale"]) or 1
+  scale = max(0.5, min(3.0, scale))
+  scale = floor(scale * 10 + 0.5) / 10
+  pfQuest_config["arrowscale"] = tostring(scale)
+  self.content:SetScale(scale)
+end
+
+-- scale indicator: brief "1.5x" flash on scroll
+pfQuest.route.arrow.scaletext = pfQuest.route.arrow.content:CreateFontString(nil, "OVERLAY", "GameFontWhite")
+pfQuest.route.arrow.scaletext:SetPoint("BOTTOMRIGHT", pfQuest.route.arrow.model, "BOTTOMRIGHT", -2, 2)
+pfQuest.route.arrow.scaletext:SetFont(pfUI.font_default, pfUI_config.global.font_size, "OUTLINE")
+pfQuest.route.arrow.scaletext:SetJustifyH("RIGHT")
+pfQuest.route.arrow.scaletext:SetTextColor(1, 1, 1, 1)
+pfQuest.route.arrow.scaletext:Hide()
+
+pfQuest.route.arrow.scalefader = CreateFrame("Frame", nil, pfQuest.route.arrow.content)
+pfQuest.route.arrow.scalefader:Hide()
+pfQuest.route.arrow.scalefader:SetScript("OnUpdate", function()
+  local elapsed = GetTime() - this.fadetime
+  if elapsed > 1.5 then
+    pfQuest.route.arrow.scaletext:Hide()
+    this:Hide()
+    return
+  end
+  local alpha = 1.0 - (elapsed / 1.5)
+  pfQuest.route.arrow.scaletext:SetAlpha(alpha)
+end)
+
+local function ShowScaleIndicator(val)
+  pfQuest.route.arrow.scaletext:SetText(string.format("%.1fx", val))
+  pfQuest.route.arrow.scaletext:SetAlpha(1)
+  pfQuest.route.arrow.scaletext:Show()
+  pfQuest.route.arrow.scalefader.fadetime = GetTime()
+  pfQuest.route.arrow.scalefader:Show()
+end
+
+-- Extend wheel capture across the whole visible arrow block, including the
+-- text below the model, without stealing click/drag input from the parent.
+pfQuest.route.arrow.hitframe = CreateFrame("Frame", nil, pfQuest.route.arrow.content)
+pfQuest.route.arrow.hitframe:SetAllPoints(pfQuest.route.arrow.content)
+pfQuest.route.arrow.hitframe:EnableMouseWheel(true)
+
+pfQuest.route.arrow.hitframe:SetScript("OnMouseWheel", function()
+  if not IsShiftKeyDown() then
+    return
+  end
+
+  local current = tonumber(pfQuest_config["arrowscale"]) or 1
+  if arg1 > 0 then
+    current = current + 0.1
+  else
+    current = current - 0.1
+  end
+  current = max(0.5, min(3.0, current))
+  current = floor(current * 10 + 0.5) / 10
+  pfQuest_config["arrowscale"] = tostring(current)
+  pfQuest.route.arrow:ApplyScale()
+  ShowScaleIndicator(current)
+
+  -- sync config slider if visible
+  if pfQuestConfig:IsShown() then
+    pfQuestConfig:UpdateConfigEntries()
+  end
+end)

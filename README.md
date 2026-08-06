@@ -1,3 +1,40 @@
+> ## This is a fork
+>
+> [pfQuest](https://github.com/The-Kludge-Bureau/pfQuest) maintained for the
+> [OctoWoW](https://octowow.st) server (WoW 1.12.1), by **Roby_Brok**.
+> Part of my [OctoWoW addon setup](https://github.com/roby-brok/octowow-addons).
+>
+> It tracks [The Kludge Bureau's build](https://github.com/The-Kludge-Bureau/pfQuest) and adds
+> two changes. Neither is OctoWoW-specific — both apply to any server, and if an upstream
+> maintainer wants either one, it's theirs to take.
+>
+> **Configurable map icon size.** Two new options in the pfQuest settings, *World Map Node Scale*
+> and *Minimap Node Scale*, both defaulting to `1.0`. They are multipliers rather than pixel
+> sizes, so the larger cluster icons keep their proportion to the regular ones. A value that is
+> missing, non-numeric, zero or negative falls back to `1.0`.
+>
+> **Fix: the map could stop following the quest log.** pfQuest locks its scan loop for ten
+> seconds at login so the burst of events on load can settle. Every `QUEST_LOG_UPDATE` arriving
+> while that lock was active pushed it out another 1.5 seconds, and nothing ever cleared it — so
+> any stream of events arriving faster than one per 1.5 seconds held the lock open indefinitely.
+> `QUEST_LOG_UPDATE` fires in exactly that pattern while you accept and complete quests, which is
+> when you most want the map to react. Once stuck, the map stopped updating until you forced it
+> with `/db query`. The lock now has a hard ceiling and always releases.
+> ([reported by ReikerEQ](https://github.com/roby-brok/pfQuest/issues/1))
+>
+> ### Credits
+>
+> Everything below this box, and effectively all of the addon, is other people's work:
+>
+> * **[Shagu](https://github.com/shagu)** — wrote pfQuest, and [ShaguQuest](https://shagu.org/ShaguQuest/) before it.
+> * **[The Kludge Bureau](https://github.com/The-Kludge-Bureau/pfQuest)** — maintains the continuation this fork is built on.
+> * **[VMaNGOS](https://github.com/vmangos)**, **[CMaNGOS](https://github.com/cmangos)** and **[MaNGOS Extras](https://github.com/MangosExtras)** — the database behind it.
+> * **[paokkerkir](https://github.com/paokkerkir/pfQuest-octo)** — the Octo database pack.
+>
+> Use the upstream repository unless you specifically want the two changes above.
+
+---
+
 # pfQuest
 
 <img src="https://raw.githubusercontent.com/The-Kludge-Bureau/pfQuest/main/_img/mode.png" float="right" align="right" width="25%">
@@ -8,7 +45,7 @@ The goal is to provide an accurate in-game equivalent of [AoWoW](http://db.vanil
 
 pfQuest is the successor of [ShaguQuest](https://shagu.org/ShaguQuest/), written from scratch with no dependency on any specific map or questlog addon. It is designed to work alongside the default UI and any other addon. If you run into a conflict, please open an issue on the bugtracker.
 
-You can check the [Latest Changes](https://github.com/The-Kludge-Bureau/pfQuest/commits/master) page to see what has changed recently.
+You can check the [Latest Changes](https://github.com/The-Kludge-Bureau/pfQuest/commits/main) page to see what has changed recently.
 
 ## Before You Install
 
@@ -57,7 +94,7 @@ Slim packages (single language): [English](https://github.com/The-Kludge-Bureau/
 The development version includes databases for all languages and all client expansions in a single folder. It will work in both Vanilla and TBC mode depending on the folder name. Due to the amount of included data, expect higher RAM and disk usage and slightly longer load times compared to the release packages.
 
 - Clone via Git: [`https://github.com/The-Kludge-Bureau/pfQuest.git`](https://github.com/The-Kludge-Bureau/pfQuest.git)
-- Download as zip: **[master.zip](https://github.com/The-Kludge-Bureau/pfQuest/archive/master.zip)**
+- Download as zip: **[main.zip](https://github.com/The-Kludge-Bureau/pfQuest/archive/main.zip)**
 
 ## Controls
 
@@ -198,12 +235,3 @@ The `mines` and `herbs` lists support an optional skill range and an `auto` shor
 ```
 
 Available tracking lists: `auctioneer`, `banker`, `battlemaster`, `chests`, `fish`, `flight`, `herbs`, `innkeeper`, `mailbox`, `meetingstone`, `mines`, `rares`, `repair`, `spirithealer`, `stablemaster`, `vendor`
-
-## OctoWoW Fork
-
-This is a fork of [pfQuest by Shagu](https://github.com/shagu/pfQuest), maintained for the OctoWoW server.
-All credit for pfQuest goes to its original creators, **Shagu** and **txtsd** — thank you for this amazing addon.
-
-Changes in this fork, fixed by **Roby_Brok**:
-- Quest route trails from the previous zone no longer linger over the continent map
-- New **World Map Node Size** and **Minimap Node Size** settings (`/db config` → Map & Minimap)

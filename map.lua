@@ -37,19 +37,27 @@ compatnamefake:SetScript("OnEvent", function()
 end)
 
 -- checking for control key is very time expensive in 1.12
--- this loop puts it into one place and only updates it every .2 seconds
--- it also only updates the key if the mouse is over a relevant frame
+-- Poll IsControlKeyDown() frequently enough that Ctrl feels responsive.
+-- Always clear when the map is not shown to avoid sticky state from a
+-- previous session (e.g. Ctrl released while mouse was off the map).
 local controlkey = CreateFrame("Frame", "pfQuestControlKey", UIParent)
 controlkey:SetScript("OnUpdate", function()
-  if (this.throttle or 0.2) > GetTime() then
+  if (this.throttle or 0.05) > GetTime() then
     return
   else
-    this.throttle = GetTime() + 0.2
+    this.throttle = GetTime() + 0.05
   end
-  if WorldMapFrame:IsShown() and MouseIsOver(WorldMapFrame) or MouseIsOver(pfMap.drawlayer) then
+  if WorldMapFrame:IsShown() and MouseIsOver(WorldMapFrame) then
     controlkey.pressed = IsControlKeyDown()
+  elseif MouseIsOver(pfMap.drawlayer) then
+    controlkey.pressed = IsControlKeyDown()
+  else
+    controlkey.pressed = nil
   end
 end)
+
+local mainmap_base_effective_scale = nil
+local mainmap_inversescale = 1.0
 
 local validmaps = setmetatable({}, { __mode = "kv" })
 local rgbcache = setmetatable({}, { __mode = "kv" })
@@ -808,6 +816,11 @@ function pfMap:DeleteNode(addon, title)
   end
 
   pfMap.queue_update = GetTime()
+  -- Force an immediate minimap refresh. UpdateMinimap throttles to once per
+  -- second for stationary players; clearing the tick bypasses that so the
+  -- deleted node's pin disappears within one OnUpdate tick (~0.05s) instead
+  -- of up to 1 second later.
+  pfMap.tick = nil
 end
 
 function pfMap:NodeClick()
@@ -835,10 +848,23 @@ function pfMap:NodeClick()
   then
     -- set as arrow target priority
     pfQuest.route.SetTarget((not pfQuest.route.IsTarget(this) and this))
+    pfMap.dirtyNodes[this.node] = true
     pfMap.queue_update = GetTime()
   else
     -- switch color
     pfQuest_colors[this.color] = { str2rgb(this.color .. GetTime()) }
+    -- dirty every coord table containing this title so all related pins re-render
+    local addon = this.node and this.node[this.title] and this.node[this.title].addon
+    if addon and pfMap.titleIndex[addon] and pfMap.titleIndex[addon][this.title] then
+      for mapId, coords in pairs(pfMap.titleIndex[addon][this.title]) do
+        for coord in pairs(coords) do
+          local nt = pfMap.nodes[addon][mapId] and pfMap.nodes[addon][mapId][coord]
+          if nt then pfMap.dirtyNodes[nt] = true end
+        end
+      end
+    else
+      pfMap.dirtyNodes[this.node] = true
+    end
     pfMap.queue_update = GetTime()
   end
 end
@@ -899,15 +925,25 @@ function pfMap:NodeLeave()
   pfMap.highlight = nil
 end
 
+-- User facing node scale, as a multiplier rather than a pixel size so the
+-- larger cluster nodes keep their proportion to the regular ones. Falls back to
+-- 1 for a missing, non-numeric or zero/negative value, since the result feeds
+-- SetWidth/SetHeight directly.
+function pfMap:GetNodeScale(obj)
+  local scale = tonumber(pfQuest_config[obj == "minimap" and "minimapnodescale" or "worldmapnodescale"])
+  if not scale or scale <= 0 then return 1 end
+  return scale
+end
+
 function pfMap:BuildNode(name, parent)
   local f = CreateFrame("Button", name, parent)
 
   if parent == WorldMapButton then
     f.defalpha = tonumber(pfQuest_config["worldmaptransp"]) or 1
-    f.defsize = tonumber(pfQuest_config["worldmapnodesize"]) or 14
+    f.defsize = 14 * pfMap:GetNodeScale()
   else
     f.defalpha = tonumber(pfQuest_config["minimaptransp"]) or 1
-    f.defsize = tonumber(pfQuest_config["minimapnodesize"]) or 14
+    f.defsize = 14 * pfMap:GetNodeScale("minimap")
     f.minimap = true
   end
 
@@ -1049,13 +1085,35 @@ function pfMap:UpdateNode(frame, node, color, obj, distance)
     frame:SetScript("OnClick", (frame.func or pfMap.NodeClick))
   end
 
+  pfMap:ResizeNode(frame, obj)
+
+  frame.node = node
+end
+
+function pfMap:ResizeNode(frame, obj)
   local highlight = frame.texture and pfMap.highlightdb[frame][pfMap.highlight] and true or nil
   local target = frame.texture and pfQuest.route and pfQuest.route.IsTarget(frame) or nil
 
-  -- set default sizes for different node types, based on the configured
-  -- node size (clusters stay a step larger than plain nodes)
-  local nodesize = tonumber(pfQuest_config[frame.minimap and "minimapnodesize" or "worldmapnodesize"]) or 14
-  frame.defsize = (frame.cluster or frame.layer == 4) and (nodesize + 4) or nodesize
+  -- set default sizes for different node types
+  frame.defsize = (frame.cluster or frame.layer == 4) and 18 or 14
+
+  -- Apply the configured scale here too, not just in BuildNode: this function
+  -- reassigns defsize from scratch on every resize, so scaling only at build
+  -- time would be thrown away the first time the map zoomed. Applied before the
+  -- zoom adjustment below so the icon inset compensation works off the scaled
+  -- base rather than the raw 14/18.
+  frame.defsize = frame.defsize * pfMap:GetNodeScale(obj)
+
+  -- Adjust node size if main map is zoomed in/out
+  if (obj ~= "minimap") then
+    if (frame.title and pfQuest.icons[frame.title]) or frame.icon then
+      -- Adjust for icons being 1 unit smaller than their parent frame
+      -- Looks better to keep the icon size constant even if the frame grows a bit.
+      frame.defsize = (frame.defsize - 2) * (mainmap_inversescale) + 2
+    else
+      frame.defsize = frame.defsize * mainmap_inversescale
+    end
+  end
 
   -- make the current route target visible
   if target then
@@ -1069,8 +1127,16 @@ function pfMap:UpdateNode(frame, node, color, obj, distance)
     frame:SetWidth(frame.defsize)
     frame:SetHeight(frame.defsize)
   end
+end
 
-  frame.node = node
+function pfMap:ResizeNodes()
+  if pfMap.pins then
+    for i = 1, table.getn(pfMap.pins) do
+      if pfMap.pins[i]:IsShown() then
+        pfMap:ResizeNode(pfMap.pins[i])
+      end
+    end
+  end
 end
 
 function pfMap:UpdateNodes()
@@ -1078,13 +1144,21 @@ function pfMap:UpdateNodes()
 
   local color = pfQuest_config["spawncolors"] == "1" and "spawn" or "title"
   local map = pfMap:GetMapID(GetCurrentMapContinent(), GetCurrentMapZone())
-  local i = 1
 
-  -- reset tracker
+  -- reset tracker and route before the map check so the tracker is always
+  -- updated from questlog even when the current zone is not in the database
+  -- (e.g. unknown zone, continent view). Without this the tracker frame
+  -- stays at 0px height if UpdateNodes only ever fires with map=nil.
   pfQuest.tracker.Reset()
-
-  -- reset route
   pfQuest.route:Reset()
+
+  if not map then
+    if pfQuest.tracker and pfQuest.tracker.DoLayout then
+      pfQuest.tracker.DoLayout()
+    end
+    return
+  end
+  local i = 1
 
   -- refresh all nodes
   local n_pins, n_skipped = 0, 0
@@ -1128,7 +1202,15 @@ function pfMap:UpdateNodes()
           or (pfQuest_config["routestarter"] == "1" and pfMap.pins[i].layer == 2)
           or pfMap.pins[i].arrow == true
         then
-          pfQuest.route:AddPoint({ x, y, pfMap.pins[i] })
+          local watched = nil
+          local questid = pfMap.pins[i].questid
+          local qdata = questid and pfQuest.questlog and pfQuest.questlog[questid]
+          if qdata and qdata.qlogid and IsQuestWatched(qdata.qlogid) then
+            watched = true
+          end
+          -- Route candidates are positional tuples consumed by route.lua:
+          -- { x, y, node, distance, watched, questid }.
+          pfQuest.route:AddPoint({ x, y, pfMap.pins[i], nil, watched, questid })
         end
 
         -- hide cluster nodes if set
@@ -1179,13 +1261,9 @@ function pfMap:UpdateNodes()
     pfQuest.tracker.DoLayout()
   end
 
-  -- record which zone was rendered so WORLD_MAP_UPDATE can skip no-op opens.
-  -- GetMapID returns nil on the continent/world view, and a nil key is only legal
-  -- to read, not to write - so guard the write while still recording "no zone".
+  -- record which zone was rendered so WORLD_MAP_UPDATE can skip no-op opens
   pfMap.lastUpdateZone = map
-  if map then
-    pfMap.dirtyMaps[map] = nil
-  end
+  pfMap.dirtyMaps[map] = nil
   -- map has fully rendered; subsequent zone changes are deliberate user actions
   pfMap.mapJustOpened = nil
 end
@@ -1289,9 +1367,12 @@ function pfMap:UpdateMinimap()
           -- skip expensive UpdateNode work (highlightdb rebuild, node iteration,
           -- size calls) when this pin is already showing the correct node and
           -- nothing has been added or removed from it since the last render.
+          -- dirtyNodes is intentionally NOT cleared here: UpdateNodes (world map)
+          -- relies on that flag and would skip the re-render if we cleared it now.
+          -- The minimap's own cache guard (mpins[i].node ~= node) handles staleness
+          -- independently, so dirtyNodes cleanup is left to UpdateNodes.
           if pfMap.mpins[i].node ~= node or pfMap.dirtyNodes[node] then
             pfMap:UpdateNode(pfMap.mpins[i], node, color, "minimap", distance)
-            pfMap.dirtyNodes[node] = nil
           end
 
           pfMap.mpins[i].hl:Hide()
@@ -1324,15 +1405,31 @@ local zone
 pfMap:RegisterEvent("ZONE_CHANGED")
 pfMap:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 pfMap:RegisterEvent("MINIMAP_ZONE_CHANGED")
+pfMap:RegisterEvent("PLAYER_ENTERING_WORLD")
 pfMap:RegisterEvent("WORLD_MAP_UPDATE")
 pfMap:SetScript("OnEvent", function()
   -- save current zone
   zone = GetCurrentMapZone()
 
   -- set map to current zone when possible
-  if event == "ZONE_CHANGED" or event == "MINIMAP_ZONE_CHANGED" or event == "ZONE_CHANGED_NEW_AREA" then
+  if event == "ZONE_CHANGED" or event == "MINIMAP_ZONE_CHANGED"
+     or event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
     if not WorldMapFrame:IsShown() then
       SetMapToCurrentZone()
+      -- Cache the player's physical zone while the map is synced to it.
+      -- GetMapID is safe here because SetMapToCurrentZone() was just called.
+      pfMap.playerZone = pfMap:GetMapIDByName(GetRealZoneText())
+        or pfMap:GetMapID(GetCurrentMapContinent(), GetCurrentMapZone())
+    else
+      -- Map is open; only trust GetRealZoneText() which reads physical zone.
+      -- GetMapID would return the user-browsed zone, not the player's.
+      pfMap.playerZone = pfMap:GetMapIDByName(GetRealZoneText())
+    end
+
+    -- Mode 5: refresh tracker from player's physical zone,
+    -- independent of UpdateNodes (which may not run in instances)
+    if pfQuest and pfQuest.tracker and pfQuest.tracker.RefreshZoneTracker then
+      pfQuest.tracker.RefreshZoneTracker()
     end
   end
 
@@ -1347,22 +1444,27 @@ pfMap:SetScript("OnEvent", function()
     local newzone = pfMap:GetMapID(GetCurrentMapContinent(), GetCurrentMapZone())
 
     if newzone == nil then
-      -- continent view: hide all worldmap pins immediately
+      -- continent view: hide all worldmap pins and route lines immediately
       for j = 1, table.getn(pfMap.pins) do
         if pfMap.pins[j] then
           pfMap.pins[j]:Hide()
         end
       end
-      -- the route belongs to those pins. this fast path skips UpdateNodes,
-      -- which is what normally resets it - without this the previous zone's
-      -- trails keep being drawn in zone coordinates over the continent map
-      pfQuest.route:Reset()
+      if pfQuest and pfQuest.route and pfQuest.route.drawlayer then
+        pfQuest.route.drawlayer:Hide()
+      end
       pfMap.lastUpdateZone = nil
     elseif pfMap.mapJustOpened then
-      -- map just opened: debounce the burst, clear flag once settled
+      -- map just opened on a zone: ensure route layer is visible and debounce
+      if pfQuest and pfQuest.route and pfQuest.route.drawlayer then
+        pfQuest.route.drawlayer:Show()
+      end
       pfMap.queue_update = GetTime()
     elseif newzone ~= pfMap.lastUpdateZone then
       -- deliberate zone change: update immediately, no debounce
+      if pfQuest and pfQuest.route and pfQuest.route.drawlayer then
+        pfQuest.route.drawlayer:Show()
+      end
       pfMap.queue_update = nil
       pfMap:UpdateNodes()
     elseif pfMap.dirtyMaps[newzone] then
@@ -1419,6 +1521,11 @@ pfMap:SetScript("OnUpdate", function()
     if not questBusy then
       pfMap.queue_update = nil
       pfMap:UpdateNodes()
+      -- Mode 5: refresh tracker after quest nodes are rebuilt.
+      -- Runs even when UpdateNodes exits early (e.g. instances).
+      if pfQuest and pfQuest.tracker and pfQuest.tracker.RefreshZoneTracker then
+        pfQuest.tracker.RefreshZoneTracker()
+      end
     end
   end
 
@@ -1478,3 +1585,26 @@ if compat.client >= 30300 then
     end
   end
 end
+
+-- Resize icons on map zoom change
+function pfMap:OnMapScaleChanged(frame, scale, hookedfunction)
+  if not mainmap_base_effective_scale then
+    mainmap_base_effective_scale = WorldMapButton:GetEffectiveScale() / WorldMapFrame:GetScale()
+  end
+  hookedfunction(frame, scale)
+  local zoom_scale = WorldMapButton:GetEffectiveScale() / WorldMapFrame:GetScale()
+  local new_inversescale = mainmap_base_effective_scale / zoom_scale
+  if (mainmap_inversescale ~= new_inversescale) then
+    mainmap_inversescale = new_inversescale
+    pfMap:ResizeNodes()
+  end
+end
+-- Listen for WorldMapFrame scale changes
+local pfHookWorldMapFrame_SetScale = WorldMapFrame.SetScale
+WorldMapFrame.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapFrame_SetScale) end
+-- Listen for WorldMapDetailFrame scale changes
+local pfHookWorldMapDetailFrame_SetScale = WorldMapDetailFrame.SetScale
+WorldMapDetailFrame.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapDetailFrame_SetScale) end
+-- Listen for WorldMapButton scale changes
+local pfHookWorldMapButton_SetScale = WorldMapButton.SetScale
+WorldMapButton.SetScale = function(frame, scale) pfMap:OnMapScaleChanged(frame, scale, pfHookWorldMapButton_SetScale) end

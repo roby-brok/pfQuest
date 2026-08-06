@@ -1068,7 +1068,7 @@ function pfDatabase:SearchMetaRelation(query, meta, show)
   local maps = {}
 
   -- abort on invalid queries
-  if not query.name then
+  if not query or not query.name then
     return
   end
 
@@ -1868,10 +1868,12 @@ function pfDatabase:SearchQuests(meta, maps)
   end
 
   -- Phase 2: remove nodes for quests that left the passing set.
+  -- Skip quests that are now active: their nodes were just refreshed by
+  -- SearchQuestID during queue processing and must not be wiped here.
   local t_rm0 = GetTime()
   local removed = 0
   for id in pairs(self.lastQuestGiversSet) do
-    if not currentSet[id] then
+    if not currentSet[id] and not (pfQuest and pfQuest.questlog and pfQuest.questlog[id]) then
       local title = (pfDB.quests.loc[id] and pfDB.quests.loc[id].T) or UNKNOWN
       pfMap:DeleteNode("PFQUEST", title)
       removed = removed + 1
@@ -2001,18 +2003,7 @@ end
 -- Try to guess the quest ID based on the questlog ID
 -- Returns possible quest IDs
 function pfDatabase:GetQuestIDs(qid)
-  -- SuperWoW 2.2 split GetQuestLink into three functions and dropped it. This one
-  -- resolves a questlog index straight to an id, so prefer it: without it every
-  -- lookup falls through to the levenshtein title match at the end of this
-  -- function, which is both slow and prone to caching an unresolved marker.
-  if GetQuestIDForLogIndex then
-    local id = tonumber(GetQuestIDForLogIndex(qid))
-    if id and id > 0 then
-      return { [1] = id }
-    end
-  end
-
-  if GetQuestLink then -- SuperWoW 2.1 and older
+  if GetQuestLink then
     local questLink = GetQuestLink(qid)
     if questLink then
       local _, _, id = strfind(questLink, "|c.*|Hquest:([%d]+):([-]?[%d]+)|h%[(.*)%]|h|r")
