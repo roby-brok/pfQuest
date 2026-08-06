@@ -29,6 +29,41 @@
 > with `/db query`. The lock now has a hard ceiling and always releases.
 > ([reported by ReikerEQ](https://github.com/roby-brok/pfQuest/issues/1))
 >
+> ### Installing this fork
+>
+> **The download links further down this page point at the upstream repository, not at this
+> fork.** They are upstream's own instructions, left intact. To get the version with the changes
+> above, download from here instead:
+>
+> 1. **[Download this fork](https://github.com/roby-brok/pfQuest/archive/refs/heads/master.zip)**
+> 2. Unpack the zip
+> 3. **Rename the folder `pfQuest-master` to `pfQuest`** — this step is not optional
+> 4. Move `pfQuest` into `Wow-Directory\Interface\AddOns`
+> 5. Restart WoW
+>
+> Step 3 matters because WoW only loads an addon when the folder name matches the `.toc` inside
+> it. A folder called `pfQuest-master` containing `pfQuest.toc` is skipped silently — no error,
+> no entry in the addon list, it simply never runs.
+>
+> ### You probably also want a database pack
+>
+> pfQuest ships the standard Vanilla / TBC / WotLK database and works on its own. Servers with
+> custom content need an extra pack on top, downloaded separately — **this repository does not
+> include one**:
+>
+> | Server | Pack | Rename the unpacked folder to |
+> |---|---|---|
+> | [OctoWoW](https://octowow.st) | [pfQuest-octo](https://github.com/paokkerkir/pfQuest-octo) | `pfQuest-octo` |
+> | [Turtle WoW](https://turtle-wow.org) | [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) | `pfQuest-turtle` |
+>
+> Same trap as above — the zips unpack as `pfQuest-octo-main` and `pfQuest-turtle-main`, and
+> neither loads until renamed.
+>
+> **Install only one of them.** Both write the same database namespace as a plain assignment
+> rather than a merge, so whichever loads last replaces the other outright. With both present the
+> folder names decide it alphabetically: `pfQuest-turtle` wins and `pfQuest-octo` is parsed and
+> thrown away, costing you memory and load time for data that never gets used.
+
 > ### Credits
 >
 > Everything below this box, and effectively all of the addon, is other people's work:
