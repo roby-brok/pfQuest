@@ -29,6 +29,22 @@
 > with `/db query`. The lock now has a hard ceiling and always releases.
 > ([reported by ReikerEQ](https://github.com/roby-brok/pfQuest/issues/1))
 >
+> **Fix: the `[Translate]` button never worked.** Two independent reasons. Its `OnClick` passed
+> the global `self` to `UIDropDownMenu_Initialize` and `ToggleDropDownMenu` — a 1.12 script
+> handler has no `self`, the frame is `this` — so both got nil and the menu never opened,
+> silently, because `scriptErrors` is off. And even repaired it would have shown nothing: the
+> locale-freeing loop nils out every non-active locale table at load, so the quest text the
+> button reads was already gone. The freeing loop now spares the `quests` locale tables (the
+> only ones the button reads), which keeps 19.8 MB and still frees the 10.7 MB of `items`,
+> `units` and `objects` locales that genuinely are unreachable. A new **Quest Text
+> Translations** option, on by default, frees the rest and hides the button — a visible button
+> that does nothing is the bug, not the feature.
+>
+> **New: `/db checkdb`.** Reports any quest in your log that has no objective data. Such a quest
+> draws no map pins and says nothing about it, so the only way to notice was to stare at an
+> empty map. A pure delivery quest legitimately has none; anything asking you to kill or collect
+> should never be listed, and if it is, that is a database bug worth reporting.
+>
 > **Quest database website is settable.** Each database pack assigns `pfQuest.dburl` in its own
 > patchtable, so with more than one installed the winner is whichever folder sorts last —
 > `pfQuest-turtle` silently overrides `pfQuest-octo`, and you get the wrong server's site when
@@ -254,6 +270,7 @@ All pfQuest features are accessible from chat or macros using `/db`. For example
 /db reset               Reload all quest nodes on the map
 /db query               Query the server for completed quests
 /db clean               Remove all database search results from the map
+/db checkdb             List quests in your log that have no objective data
 ```
 
 ### Database Search

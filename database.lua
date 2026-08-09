@@ -236,20 +236,38 @@ for id, db in pairs(dbs) do
     .. "|cffcccccc]"
 end
 
--- Free unused locale data to reduce memory (~65MB savings)
--- The "loc" reference already points to the correct table, so we can safely
--- nil out all other locale tables and let them be garbage collected
-for id, db in pairs(dbs) do
-  for locale in pairs(pfDB.locales) do
-    if pfDB[db][locale] and pfDB[db][locale] ~= pfDB[db]["loc"] then
-      pfDB[db][locale] = nil
+-- Free unused locale data to reduce memory.
+--
+-- The "loc" reference already points to the correct table, so every other
+-- locale table can be dropped and garbage collected.
+--
+-- EXCEPT the plain "quests" locale tables. The quest log's [Translate] button
+-- reads pfDB["quests"][lang][id] for whatever language the user picks, so
+-- freeing those silently disables the feature -- the button stays clickable and
+-- does nothing. If you free them again, remove the button too (see quest.lua).
+-- The "-tbc"/"-wotlk" quest variants are already merged into the base tables
+-- and are not what the button reads, so those still go.
+--
+-- Cost, measured across the eight non-active locales: quests 19.8 MB kept;
+-- items 5.6 / units 2.9 / objects 2.3 MB still freed. Turn the "Quest Text
+-- Translations" option off to reclaim the rest and hide the button.
+local function freelocales(only)
+  for id, db in pairs(dbs) do
+    if not only or db == only then
+      for locale in pairs(pfDB.locales) do
+        if pfDB[db][locale] and pfDB[db][locale] ~= pfDB[db]["loc"] then
+          pfDB[db][locale] = nil
+        end
+      end
+      if pfDB[db]["enUS"] and pfDB[db]["enUS"] ~= pfDB[db]["loc"] then
+        pfDB[db]["enUS"] = nil
+      end
     end
   end
-  -- Also free enUS if it's not the active locale (enUS may not be in pfDB.locales)
-  if pfDB[db]["enUS"] and pfDB[db]["enUS"] ~= pfDB[db]["loc"] then
-    pfDB[db]["enUS"] = nil
-  end
-  -- Free expansion patch data (already merged into base tables)
+end
+
+for id, db in pairs(dbs) do
+  -- Expansion patch data is merged into the base tables already; always free.
   pfDB[db]["data-tbc"] = nil
   pfDB[db]["data-wotlk"] = nil
   for locale in pairs(pfDB.locales) do
@@ -258,7 +276,26 @@ for id, db in pairs(dbs) do
   end
   pfDB[db]["enUS-tbc"] = nil
   pfDB[db]["enUS-wotlk"] = nil
+
+  if db ~= "quests" then
+    freelocales(db)
+  end
 end
+
+-- The quest locales are only reachable through the [Translate] button, so the
+-- decision needs pfQuest_config -- which is not populated at file scope.
+-- pfQuestConfig:LoadConfig() runs on ADDON_LOADED; VARIABLES_LOADED fires after
+-- every addon's ADDON_LOADED, so the option is guaranteed readable by then.
+pfDatabase.translations = true
+local freequestlocales = CreateFrame("Frame")
+freequestlocales:RegisterEvent("VARIABLES_LOADED")
+freequestlocales:SetScript("OnEvent", function()
+  if pfQuest_config and pfQuest_config["translations"] == "0" then
+    pfDatabase.translations = false
+    freelocales("quests")
+  end
+  this:UnregisterEvent("VARIABLES_LOADED")
+end)
 
 -- Free expansion meta/minimap tables (already merged)
 pfDB["minimap-tbc"] = nil
