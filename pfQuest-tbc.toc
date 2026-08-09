@@ -30,4 +30,6 @@ init\esES-tbc.xml
 init\ruRU-tbc.xml
 init\ptBR-tbc.xml
 
+corrections.lua
+
 init\addon.xml

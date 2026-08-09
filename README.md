@@ -40,6 +40,20 @@
 > Translations** option, on by default, frees the rest and hides the button — a visible button
 > that does nothing is the bug, not the feature.
 >
+> **Fix: seven quests that drew no objective pins.** The shipped database has no `["obj"]`
+> data for them, so nothing was ever plotted — most visibly Un'Goro's three crystal pylons
+> (*The Northern / Eastern / Western Pylon*), whose entire objective is to find the pylon and
+> which pointed at nothing at all. Also *Lonebrow's Journal*, *The Torch of Retribution*,
+> *Catalogue of the Wayward* and *A Bijou for Zanza*. The corrections live in
+> `corrections.lua` and apply only where the field is absent, so a future database that
+> ships real data takes precedence automatically.
+>
+> Worth recording how these were picked: a scan for quests whose objective text names a known
+> game object produced 20 candidates, and **13 of them were wrong** on inspection — *Master
+> Ryson's All Seeing Eye* resolves to an object sitting in Alterac Valley for a quest that
+> happens in the Hinterlands, and several matched the object that *starts* the quest rather
+> than the one you are sent to find. Only hand-verified entries are in the file.
+>
 > **New: `/db checkdb`.** Reports any quest in your log that has no objective data. Such a quest
 > draws no map pins and says nothing about it, so the only way to notice was to stare at an
 > empty map. A pure delivery quest legitimately has none; anything asking you to kill or collect
