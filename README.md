@@ -89,20 +89,22 @@
 >
 > | For | Pack | Rename the unpacked folder to |
 > |---|---|---|
-> | [OctoWoW](https://octowow.st) | [pfQuest-octo](https://github.com/paokkerkir/pfQuest-octo) | `pfQuest-octo` |
-> | Extra quest data | [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) | `pfQuest-turtle` |
+> | [OctoWoW](https://octowow.st) | **[pfQuest-octo](https://github.com/roby-brok/pfQuest-octo)** | `pfQuest-octo` |
 >
-> Same trap as above — the zips unpack as `pfQuest-octo-main` and `pfQuest-turtle-main`, and
-> neither loads until renamed.
+> Same trap as above — the zip unpacks as `pfQuest-octo-master` and does not load until renamed.
 >
-> The turtle pack carries considerably more quest data and is still the fuller database, but
-> Turtle WoW itself has shut down, so the website it links to is gone. That is what the
-> **Quest Database Website** setting above is for — it defaults to OctoWoW's.
+> **Install one pack, not two.** Packs assign the database namespace outright rather than
+> merging into it, so with two installed the one whose folder sorts last simply replaces the
+> other — `pfQuest-turtle` wins on the letter *t*, and everything the Octo pack parsed at
+> login is thrown away. Memory and load time spent on data that never gets used, plus quest
+> links pointing at the wrong server.
 >
-> **Install only one of them.** Both write the same database namespace as a plain assignment
-> rather than a merge, so whichever loads last replaces the other outright. With both present the
-> folder names decide it alphabetically: `pfQuest-turtle` wins and `pfQuest-octo` is parsed and
-> thrown away, costing you memory and load time for data that never gets used.
+> That is why the pack above is a merged one: the TurtleWoW database as the base with the
+> Octo pack folded in on top, so there is nothing to choose between. It supersedes both
+> [paokkerkir/pfQuest-octo](https://github.com/paokkerkir/pfQuest-octo) (the original Octo
+> pack, and the source of the corrections) and
+> [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) — **remove
+> `pfQuest-turtle` if you have it.**
 
 > ### Credits
 >
