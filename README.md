@@ -59,6 +59,15 @@
 > empty map. A pure delivery quest legitimately has none; anything asking you to kill or collect
 > should never be listed, and if it is, that is a database bug worth reporting.
 >
+> **Fix: five hardening fixes from the 2026-08-12 deep audit.** Defensive guards on paths
+> that error on imperfect data, found by sweeping the whole addon: the quest tracker erred
+> on custom-server objective rows that come back empty (three sites — tooltip, progress
+> pass, cached draw); the database browser crashed drawing a favourited quest whose id the
+> current database no longer names, and on vendor tooltips for units without a localized
+> name; the minimap-arrow probe at login called `strlower` on model-less frames; and the
+> pfUI url-copy path assumed a chat module that can be disabled. None of them changes
+> behaviour on good data.
+>
 > **Quest database website is settable.** Each database pack assigns `pfQuest.dburl` in its own
 > patchtable, so with more than one installed the winner is whichever folder sorts last —
 > `pfQuest-turtle` silently overrides `pfQuest-octo`, and you get the wrong server's site when
