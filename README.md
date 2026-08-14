@@ -54,10 +54,12 @@
 > happens in the Hinterlands, and several matched the object that *starts* the quest rather
 > than the one you are sent to find. Only hand-verified entries are in the file.
 >
-> **New: `/db checkdb`.** Reports any quest in your log that has no objective data. Such a quest
-> draws no map pins and says nothing about it, so the only way to notice was to stare at an
-> empty map. A pure delivery quest legitimately has none; anything asking you to kill or collect
-> should never be listed, and if it is, that is a database bug worth reporting.
+> **New: `/db checkdb`.** Checks every quest in your log against the database. Delivery and
+> talk-to quests have no objectives by design — for those the map pin is the turn-in marker,
+> and the report names it ("turn-in pin at Baine Bloodhoof"). Only a quest with neither
+> objectives nor a turn-in entry — one that truly draws nothing on the map — is flagged as a
+> database bug worth reporting. (Reworked 2026-08-14: the first version red-flagged
+> delivery quests too, which sent players to report data that was never broken.)
 >
 > **Fix: five hardening fixes from the 2026-08-12 deep audit.** Defensive guards on paths
 > that error on imperfect data, found by sweeping the whole addon: the quest tracker erred
@@ -295,7 +297,7 @@ All pfQuest features are accessible from chat or macros using `/db`. For example
 /db reset               Reload all quest nodes on the map
 /db query               Query the server for completed quests
 /db clean               Remove all database search results from the map
-/db checkdb             List quests in your log that have no objective data
+/db checkdb             Check your log's quests for missing map data
 ```
 
 ### Database Search
